@@ -22,6 +22,8 @@ Installation
 Development
 -----------
 
+Development requires Node.js 24 and Visual Studio Code 1.125 or newer.
+
 Install dependencies, build the extension, and create a VSIX package with Vite+:
 
 ```sh
