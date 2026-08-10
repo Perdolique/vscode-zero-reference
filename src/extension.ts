@@ -1,22 +1,22 @@
-import { commands, languages, ExtensionContext } from 'vscode';
-import Provider from './CodeLensProvider';
-import { updateConfig, getCurrentConfig, getDocumentFilter } from './config';
+import { commands, languages } from 'vscode';
+import type { ExtensionContext } from 'vscode';
+import { ZeroReferenceCodeLensProvider } from './codeLensProvider.js';
+import { getUseCodeLens, updateUseCodeLens } from './config.js';
+import { getDocumentFilter } from './symbols.js';
 
-// main activation entry of extension
-export function activate(context: ExtensionContext) {
-  const codeLensProvider = new Provider();
+export function activate(context: ExtensionContext): void {
+  const codeLensProvider = new ZeroReferenceCodeLensProvider();
   const documentFilter = getDocumentFilter();
 
   context.subscriptions.push(
-    commands.registerCommand('zeroReference.toggleCodeLens', () => {
-      const config = getCurrentConfig();
-      const newConfig = { ...config, ...{ useCodeLens: !config.useCodeLens } };
+    codeLensProvider,
+    commands.registerCommand('zeroReference.toggleCodeLens', async () => {
+      const useCodeLens = getUseCodeLens();
 
-      updateConfig(newConfig, codeLensProvider.update);
-    })
-  );
+      await updateUseCodeLens(!useCodeLens);
 
-  context.subscriptions.push(
+      codeLensProvider.refresh();
+    }),
     languages.registerCodeLensProvider(documentFilter, codeLensProvider)
   );
 }
