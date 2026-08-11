@@ -28,6 +28,7 @@ Install dependencies, build the extension, and create a VSIX package with Vite+:
 
 ```sh
 vp install --frozen-lockfile
+vp run test
 vp run build
 vp run package
 ```
