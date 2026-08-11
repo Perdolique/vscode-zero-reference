@@ -4,6 +4,13 @@ All notable changes to the "ZeroReference" extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/Perdolique/vscode-zero-reference/compare/v2.0.0...v2.0.1) (2026-08-11)
+
+
+### Performance Improvements
+
+* **extension:** stabilize reference analysis ([0e2ebf7](https://github.com/Perdolique/vscode-zero-reference/commit/0e2ebf7ddad3655f52608c5e951b94f4bba25ad7))
+
 ## [2.0.0](https://github.com/Perdolique/vscode-zero-reference/compare/v1.2.5...v2.0.0) (2026-08-10)
 
 
