@@ -11,6 +11,6 @@
     "outFiles": [
       "${workspaceFolder}/build/**/*.js"
     ],
-    "preLaunchTask": "vp: watch"
+    "preLaunchTask": "pnpm: watch"
   }]
 }

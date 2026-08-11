@@ -1,0 +1,30 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Test and package
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Set up pnpm
+        uses: Perdolique/automations/.github/actions/setup-pnpm@v3
+        with:
+          install-dependencies: true
+
+      - name: Test extension
+        run: xvfb-run -a pnpm test
+
+      - name: Package extension
+        run: pnpm run package

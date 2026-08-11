@@ -1,15 +1,18 @@
-import { SymbolKind } from 'vscode';
+import { Range, SymbolKind } from 'vscode';
 import type {
   DocumentFilter,
   DocumentSymbol,
   Position,
-  Range,
-  SymbolInformation
+  SymbolInformation,
+  TextDocument
 } from 'vscode';
 
-interface SymbolData {
+export interface SymbolData {
+  readonly kind: SymbolKind;
   readonly name: string;
+  readonly normalizedName: string;
   readonly range: Range;
+  readonly declarationRange: Range;
   readonly referencePosition: Position;
 }
 
@@ -56,20 +59,23 @@ export function getDocumentFilter(): DocumentFilter[] {
 
 export function getSymbolData(
   symbols: readonly (DocumentSymbol | SymbolInformation)[],
-  languageId: string
+  document: TextDocument
 ): SymbolData[] {
   const symbolData: SymbolData[] = [];
 
   for (const symbol of symbols) {
     if (isDocumentSymbol(symbol)) {
-      symbolData.push(...flattenDocumentSymbol(symbol, languageId));
+      appendDocumentSymbols(symbolData, symbol, document);
       continue;
     }
 
-    if (isKindSupported(symbol.kind, languageId)) {
+    if (isKindSupported(symbol.kind, document.languageId)) {
       symbolData.push({
+        kind: symbol.kind,
         name: symbol.name,
+        normalizedName: normalizeSymbolName(symbol.name),
         range: symbol.location.range,
+        declarationRange: symbol.location.range,
         referencePosition: symbol.location.range.start
       });
     }
@@ -90,21 +96,110 @@ function isDocumentSymbol(
   return 'selectionRange' in symbol;
 }
 
-// Flatten nested document symbols while preserving their declaration positions.
-function flattenDocumentSymbol(symbol: DocumentSymbol, languageId: string): SymbolData[] {
-  const symbolData: SymbolData[] = [];
+function appendDocumentSymbols(
+  destination: SymbolData[],
+  root: DocumentSymbol,
+  document: TextDocument
+): void {
+  const pending = [root];
 
-  if (isKindSupported(symbol.kind, languageId)) {
-    symbolData.push({
-      name: symbol.name,
-      range: symbol.range,
-      referencePosition: symbol.selectionRange.start
-    });
+  while (pending.length > 0) {
+    const symbol = pending.pop();
+
+    if (symbol === undefined) {
+      continue;
+    }
+
+    if (isKindSupported(symbol.kind, document.languageId)) {
+      const declarationRange = getDeclarationRange(symbol, document);
+
+      if (declarationRange !== undefined) {
+        destination.push({
+          kind: symbol.kind,
+          name: symbol.name,
+          normalizedName: normalizeSymbolName(symbol.name),
+          range: symbol.range,
+          declarationRange,
+          referencePosition: declarationRange.start
+        });
+      }
+    }
+
+    for (let index = symbol.children.length - 1; index >= 0; index -= 1) {
+      const child = symbol.children[index];
+
+      if (child !== undefined) {
+        pending.push(child);
+      }
+    }
+  }
+}
+
+function getDeclarationRange(
+  symbol: DocumentSymbol,
+  document: TextDocument
+): Range | undefined {
+  if (!symbol.selectionRange.isEqual(symbol.range)) {
+    return symbol.selectionRange;
   }
 
-  for (const child of symbol.children) {
-    symbolData.push(...flattenDocumentSymbol(child, languageId));
+  const name = normalizeSymbolName(symbol.name);
+
+  if (name.length === 0) {
+    return undefined;
   }
 
-  return symbolData;
+  const declarationText = document.getText(symbol.range);
+  const occurrenceOffsets = findStandaloneOccurrences(declarationText, name);
+
+  if (occurrenceOffsets.length !== 1) {
+    return undefined;
+  }
+
+  const occurrenceOffset = occurrenceOffsets[0];
+
+  if (occurrenceOffset === undefined) {
+    return undefined;
+  }
+
+  const declarationOffset = document.offsetAt(symbol.range.start);
+  const nameOffset = declarationOffset + occurrenceOffset;
+
+  return new Range(
+    document.positionAt(nameOffset),
+    document.positionAt(nameOffset + name.length)
+  );
+}
+
+function normalizeSymbolName(name: string): string {
+  return name.replace(/^\((?:get|set)\)\s+/, '');
+}
+
+function findStandaloneOccurrences(text: string, name: string): number[] {
+  const offsets: number[] = [];
+  let searchOffset = 0;
+
+  while (searchOffset <= text.length - name.length) {
+    const occurrenceOffset = text.indexOf(name, searchOffset);
+
+    if (occurrenceOffset === -1) {
+      break;
+    }
+
+    const precedingCharacter = text[occurrenceOffset - 1];
+    const followingCharacter = text[occurrenceOffset + name.length];
+
+    if (!isIdentifierCharacter(precedingCharacter)
+      && !isIdentifierCharacter(followingCharacter)) {
+      offsets.push(occurrenceOffset);
+    }
+
+    searchOffset = occurrenceOffset + name.length;
+  }
+
+  return offsets;
+}
+
+function isIdentifierCharacter(character: string | undefined): boolean {
+  return character !== undefined && /[$_\p{ID_Continue}]/u.test(character);
 }

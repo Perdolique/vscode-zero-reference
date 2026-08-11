@@ -1,4 +1,6 @@
 /build
+/build-test
+/.vscode-test
 /node_modules
 /*.vsix
 /pnpm-debug.log*

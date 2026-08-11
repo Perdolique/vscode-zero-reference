@@ -27,24 +27,20 @@ jobs:
     name: Publish extension
     needs: release_please
     if: needs.release_please.outputs.release_created == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Vite+
-        uses: voidzero-dev/setup-vp@v1.17.0
+      - name: Set up pnpm
+        uses: Perdolique/automations/.github/actions/setup-pnpm@v3
         with:
-          node-version: '24'
-          cache: true
+          install-dependencies: true
 
-      - name: Install dependencies
-        run: vp install --frozen-lockfile
+      - name: Test extension
+        run: xvfb-run -a pnpm test
 
       - name: Publish to Visual Studio Marketplace
-        run: vp exec vsce publish
+        run: pnpm exec vsce publish
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
