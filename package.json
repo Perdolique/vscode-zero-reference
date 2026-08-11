@@ -1,6 +1,6 @@
 {
   "name": "zero-reference",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Find and show code with no references at all",
   "displayName": "Zero Reference",
   "publisher": "Ky6uk",

@@ -4,6 +4,13 @@ All notable changes to the "ZeroReference" extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2](https://github.com/Perdolique/vscode-zero-reference/compare/v2.0.1...v2.0.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **extension:** filter contract symbols ([81fbeb1](https://github.com/Perdolique/vscode-zero-reference/commit/81fbeb1c1243d0eea4e78067c2c377525aa5d9c4))
+
 ## [2.0.1](https://github.com/Perdolique/vscode-zero-reference/compare/v2.0.0...v2.0.1) (2026-08-11)
 
 
