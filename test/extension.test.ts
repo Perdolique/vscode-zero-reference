@@ -34,5 +34,23 @@ suite('extension integration', () => {
     assert.equal(titles.filter(title => title.includes('overloaded')).length, 1);
     assert.equal(titles.some(title => title.includes('["literal"]')), false);
     assert.equal(titles.some(title => title.includes('shorthandValue')), false);
+
+    const ignoredTitles = [
+      '"Bindings" has zero references',
+      '"environment" has zero references',
+      '"runtime" has zero references',
+      '"status" has zero references',
+      '"error" has zero references',
+      '"default" has zero references'
+    ];
+
+    for (const ignoredTitle of ignoredTitles) {
+      assert.equal(titles.includes(ignoredTitle), false, ignoredTitle);
+    }
+
+    assert.equal(
+      titles.includes('"preservedClassProperty" has zero references'),
+      true
+    );
   });
 });

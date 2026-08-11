@@ -16,6 +16,11 @@ export interface SymbolData {
   readonly referencePosition: Position;
 }
 
+interface PendingDocumentSymbol {
+  readonly parentKind: SymbolKind | undefined;
+  readonly symbol: DocumentSymbol;
+}
+
 const supportedKinds: ReadonlyMap<string, readonly SymbolKind[]> = new Map([
   ['typescript', [
     SymbolKind.Class,
@@ -69,11 +74,18 @@ export function getSymbolData(
       continue;
     }
 
-    if (isKindSupported(symbol.kind, document.languageId)) {
+    const normalizedName = normalizeSymbolName(symbol.name);
+
+    if (isSymbolEligible(
+      symbol.kind,
+      normalizedName,
+      undefined,
+      document.languageId
+    )) {
       symbolData.push({
         kind: symbol.kind,
         name: symbol.name,
-        normalizedName: normalizeSymbolName(symbol.name),
+        normalizedName,
         range: symbol.location.range,
         declarationRange: symbol.location.range,
         referencePosition: symbol.location.range.start
@@ -90,6 +102,25 @@ function isKindSupported(kind: SymbolKind, languageId: string): boolean {
   return kinds?.includes(kind) ?? false;
 }
 
+function isSymbolEligible(
+  kind: SymbolKind,
+  normalizedName: string,
+  parentKind: SymbolKind | undefined,
+  languageId: string
+): boolean {
+  if (!isKindSupported(kind, languageId)) {
+    return false;
+  }
+
+  if (parentKind === undefined && normalizedName === 'default') {
+    return false;
+  }
+
+  return kind !== SymbolKind.Property
+    || parentKind === SymbolKind.Class
+    || parentKind === SymbolKind.Interface;
+}
+
 function isDocumentSymbol(
   symbol: DocumentSymbol | SymbolInformation
 ): symbol is DocumentSymbol {
@@ -101,23 +132,34 @@ function appendDocumentSymbols(
   root: DocumentSymbol,
   document: TextDocument
 ): void {
-  const pending = [root];
+  const pending: PendingDocumentSymbol[] = [{
+    parentKind: undefined,
+    symbol: root
+  }];
 
   while (pending.length > 0) {
-    const symbol = pending.pop();
+    const pendingSymbol = pending.pop();
 
-    if (symbol === undefined) {
+    if (pendingSymbol === undefined) {
       continue;
     }
 
-    if (isKindSupported(symbol.kind, document.languageId)) {
+    const { parentKind, symbol } = pendingSymbol;
+    const normalizedName = normalizeSymbolName(symbol.name);
+
+    if (isSymbolEligible(
+      symbol.kind,
+      normalizedName,
+      parentKind,
+      document.languageId
+    )) {
       const declarationRange = getDeclarationRange(symbol, document);
 
       if (declarationRange !== undefined) {
         destination.push({
           kind: symbol.kind,
           name: symbol.name,
-          normalizedName: normalizeSymbolName(symbol.name),
+          normalizedName,
           range: symbol.range,
           declarationRange,
           referencePosition: declarationRange.start
@@ -129,7 +171,7 @@ function appendDocumentSymbols(
       const child = symbol.children[index];
 
       if (child !== undefined) {
-        pending.push(child);
+        pending.push({ parentKind: symbol.kind, symbol: child });
       }
     }
   }

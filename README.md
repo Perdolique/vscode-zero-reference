@@ -14,6 +14,11 @@ Supported Languages
 * TypeScript
 * JavaScript (note about [jsconfig.json](https://code.visualstudio.com/docs/languages/jsconfig))
 
+Conservative Matching
+---------------------
+
+Properties are analyzed only when Visual Studio Code reports them as direct class or interface members. Default export assignments are also ignored because their consumers can live outside the static reference graph.
+
 Installation
 ------------
 

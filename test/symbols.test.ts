@@ -66,7 +66,7 @@ suite('symbol classification', () => {
 
   test('recovers exactly one normalized name from a full declaration range', async () => {
     const document = await workspace.openTextDocument({
-      content: 'function foo(value: string): string;\nget value(): string;',
+      content: 'function foo(value: string): string;\nclass Example { get value(): string; }',
       language: 'typescript'
     });
     const overloadRange = new Range(0, 0, 0, 36);
@@ -77,7 +77,14 @@ suite('symbol classification', () => {
       overloadRange,
       overloadRange
     );
-    const getterRange = new Range(1, 0, 1, 20);
+    const classSymbol = new DocumentSymbol(
+      'Example',
+      '',
+      SymbolKind.Class,
+      new Range(1, 0, 1, 38),
+      new Range(1, 6, 1, 13)
+    );
+    const getterRange = new Range(1, 16, 1, 36);
     const getter = new DocumentSymbol(
       '(get) value',
       '',
@@ -86,11 +93,95 @@ suite('symbol classification', () => {
       getterRange
     );
 
-    const result = getSymbolData([overload, getter], document);
+    classSymbol.children.push(getter);
 
-    assert.equal(result.length, 2);
+    const result = getSymbolData([overload, classSymbol], document);
+
+    assert.equal(result.length, 3);
     assert.ok(result[0]?.declarationRange.isEqual(new Range(0, 9, 0, 12)));
-    assert.ok(result[1]?.declarationRange.isEqual(new Range(1, 4, 1, 9)));
+    assert.ok(result[2]?.declarationRange.isEqual(new Range(1, 20, 1, 25)));
+  });
+
+  test('keeps member properties and omits contract properties', async () => {
+    const content = [
+      'variableContainer variableProperty functionContainer functionProperty',
+      'classContainer classProperty interfaceContainer interfaceProperty',
+      'default flatProperty'
+    ].join('\n');
+    const document = await workspace.openTextDocument({
+      content,
+      language: 'typescript'
+    });
+    const createNamedSymbol = (
+      name: string,
+      kind: SymbolKind
+    ): DocumentSymbol => {
+      const nameOffset = content.indexOf(name);
+
+      assert.notEqual(nameOffset, -1);
+
+      const nameRange = new Range(
+        document.positionAt(nameOffset),
+        document.positionAt(nameOffset + name.length)
+      );
+
+      return new DocumentSymbol(name, '', kind, nameRange, nameRange);
+    };
+    const variableContainer = createNamedSymbol(
+      'variableContainer',
+      SymbolKind.Variable
+    );
+    const functionContainer = createNamedSymbol(
+      'functionContainer',
+      SymbolKind.Function
+    );
+    const classContainer = createNamedSymbol('classContainer', SymbolKind.Class);
+    const interfaceContainer = createNamedSymbol(
+      'interfaceContainer',
+      SymbolKind.Interface
+    );
+    const defaultExport = createNamedSymbol('default', SymbolKind.Variable);
+    const flatPropertyRange = createNamedSymbol(
+      'flatProperty',
+      SymbolKind.Property
+    ).range;
+    const flatProperty = new SymbolInformation(
+      'flatProperty',
+      SymbolKind.Property,
+      '',
+      new Location(document.uri, flatPropertyRange)
+    );
+
+    variableContainer.children.push(
+      createNamedSymbol('variableProperty', SymbolKind.Property)
+    );
+    functionContainer.children.push(
+      createNamedSymbol('functionProperty', SymbolKind.Property)
+    );
+    classContainer.children.push(
+      createNamedSymbol('classProperty', SymbolKind.Property)
+    );
+    interfaceContainer.children.push(
+      createNamedSymbol('interfaceProperty', SymbolKind.Property)
+    );
+
+    const result = getSymbolData([
+      variableContainer,
+      functionContainer,
+      classContainer,
+      interfaceContainer,
+      defaultExport,
+      flatProperty
+    ], document);
+
+    assert.deepEqual(result.map(symbol => symbol.name), [
+      'variableContainer',
+      'functionContainer',
+      'classContainer',
+      'classProperty',
+      'interfaceContainer',
+      'interfaceProperty'
+    ]);
   });
 
   test('omits a full declaration range with multiple name candidates', async () => {
