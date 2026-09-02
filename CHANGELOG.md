@@ -4,6 +4,13 @@ All notable changes to the "ZeroReference" extension will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0](https://github.com/Perdolique/vscode-zero-reference/compare/v2.1.0...v2.2.0) (2026-09-02)
+
+
+### Features
+
+* **analysis:** add exclusions and suppression ([b31c727](https://github.com/Perdolique/vscode-zero-reference/commit/b31c7275b05f519e78c25716df59b0233810272c))
+
 ## [2.1.0](https://github.com/Perdolique/vscode-zero-reference/compare/v2.0.2...v2.1.0) (2026-09-02)
 
 
