@@ -35,6 +35,9 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      worsier:
+        specifier: 3.2.0
+        version: 3.2.0
 
 packages:
 
@@ -1678,6 +1681,55 @@ packages:
 
   workerpool@9.3.4:
     resolution: {integrity: sha512-TmPRQYYSAnnDiEB0P/Ytip7bFGvqnSU6I2BcuSw7Hx+JSg/DsUi5ebYfc8GYaSdpuvOcEs6dXxPurOYpe9QFwg==}
+
+  worsier-darwin-arm64@3.2.0:
+    resolution: {integrity: sha512-zNJO7soOlerPwY9OQHJdRRx6kqfK1YBmALK3N4r11ydgWi97EEnr+TrWWz06SMdxijDc7qWFf4EIGcIWpMGX8w==}
+    cpu: [arm64]
+    os: [darwin]
+
+  worsier-darwin-x64@3.2.0:
+    resolution: {integrity: sha512-WG/MCfshPxoPup1JWip4zNCKMFjJGVG0xwHuN8a1+As9gvWdAt9YO6poMTa4PNMFsEwvg8sEWzZcPR3lKn2JCw==}
+    cpu: [x64]
+    os: [darwin]
+
+  worsier-linux-arm64-gnu@3.2.0:
+    resolution: {integrity: sha512-FVyDhvz7/PCpLeaKgS9VY5C0FV9VNmgXxXPNMyreS5aJKhJJfWI/kWZoL69b1uutu618npxIcspqjyWEhjAJNw==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  worsier-linux-arm64-musl@3.2.0:
+    resolution: {integrity: sha512-v1yVYdmPXbUsir1wGKWbRbe6Ta8tw35RLSrT4gYp0l/oj6MREuce7B9X7Y7o+Ve4NNIh+KDrG2L/4mJ84wXuIA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  worsier-linux-x64-gnu@3.2.0:
+    resolution: {integrity: sha512-AtGnw1V6WGyQ5bwLN91+WTZcW587ZBpodagmXErIxvINT0lGLLmz61Goj4yVVgWnRzoUI3D9sENeJ2Yx8tVB7w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  worsier-linux-x64-musl@3.2.0:
+    resolution: {integrity: sha512-rsQOHKZG/zGMCSkCjw+c6Tz3rVoRW6rCp59V/9ZNHxt95E4OopIPaxpMGDMi0iOtGK3/+VeBAkSno49WQYyEcg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  worsier-win32-arm64-msvc@3.2.0:
+    resolution: {integrity: sha512-/ZhMKzXY+QaWyYl0wx4mGGP3cyFUW3I9G1laoZFMWll7M2PKAwXkUNFO3EEvfhjx24L8faV+URUR/6vQCmsMZg==}
+    cpu: [arm64]
+    os: [win32]
+
+  worsier-win32-x64-msvc@3.2.0:
+    resolution: {integrity: sha512-LMLPN5dM1sJHp/fKD0yjbt1cB2VniwWLfx+Wpr1iF9OVsYkVFwVv8l+izCRGjcWr29SoeWIlU51uPT/8XYZQwQ==}
+    cpu: [x64]
+    os: [win32]
+
+  worsier@3.2.0:
+    resolution: {integrity: sha512-aVWaHCa14r4qiOjadcoHus7Xr5zwcWtiSKepXJoh0l+wGMCG+sDXFeADErg6LywrIzvn1kxFUL/fpgfeYiv3sw==}
+    engines: {node: '>=24.0.0'}
+    hasBin: true
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -3521,6 +3573,41 @@ snapshots:
       isexe: 2.0.0
 
   workerpool@9.3.4: {}
+
+  worsier-darwin-arm64@3.2.0:
+    optional: true
+
+  worsier-darwin-x64@3.2.0:
+    optional: true
+
+  worsier-linux-arm64-gnu@3.2.0:
+    optional: true
+
+  worsier-linux-arm64-musl@3.2.0:
+    optional: true
+
+  worsier-linux-x64-gnu@3.2.0:
+    optional: true
+
+  worsier-linux-x64-musl@3.2.0:
+    optional: true
+
+  worsier-win32-arm64-msvc@3.2.0:
+    optional: true
+
+  worsier-win32-x64-msvc@3.2.0:
+    optional: true
+
+  worsier@3.2.0:
+    optionalDependencies:
+      worsier-darwin-arm64: 3.2.0
+      worsier-darwin-x64: 3.2.0
+      worsier-linux-arm64-gnu: 3.2.0
+      worsier-linux-arm64-musl: 3.2.0
+      worsier-linux-x64-gnu: 3.2.0
+      worsier-linux-x64-musl: 3.2.0
+      worsier-win32-arm64-msvc: 3.2.0
+      worsier-win32-x64-msvc: 3.2.0
 
   wrap-ansi@7.0.0:
     dependencies:

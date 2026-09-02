@@ -23,6 +23,9 @@ jobs:
         with:
           install-dependencies: true
 
+      - name: Check formatting
+        run: pnpm run format:check
+
       - name: Test extension
         run: xvfb-run -a pnpm test
 
