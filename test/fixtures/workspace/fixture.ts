@@ -6,21 +6,21 @@ export interface MergedModel {
   label: string;
 }
 
-export function overloaded(value: string): string;
-export function overloaded(value: number): number;
+export function overloaded(value: string): string
+export function overloaded(value: number): number
 export function overloaded(value: string | number): string | number {
-  return value;
+  return value
 }
 
 export class ComputedMember {
   ["literal"](): void {}
 }
 
-new ComputedMember()["literal"]();
+new ComputedMember()["literal"]()
 
-export const shorthandValue = 1;
+export const shorthandValue = 1
 
-export const shorthandObject = { shorthandValue };
+export const shorthandObject = { shorthandValue }
 
 interface ContractEnvironment {
   REGISTRY_ENVIRONMENT: string;
@@ -32,11 +32,11 @@ interface ContractContext {
 }
 
 declare class ContractApp<Environment> {
-  get(path: string, handler: (context: ContractContext) => unknown): void;
-  notFound(handler: (context: ContractContext) => unknown): void;
+  get(path: string, handler: (context: ContractContext) => unknown): void
+  notFound(handler: (context: ContractContext) => unknown): void
 }
 
-const contractApp = new ContractApp<{ Bindings: ContractEnvironment }>();
+const contractApp = new ContractApp<{ Bindings: ContractEnvironment }>()
 
 contractApp.get('/api/health', context =>
   context.json({
@@ -44,14 +44,14 @@ contractApp.get('/api/health', context =>
     runtime: 'workerd',
     status: 'ok'
   })
-);
+)
 
 contractApp.notFound(context =>
   context.json({ error: 'Not found' }, 404)
-);
+)
 
 export class PreservedClassMember {
-  readonly preservedClassProperty = true;
+  readonly preservedClassProperty = true
 }
 
-export default contractApp;
+export default contractApp

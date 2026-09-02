@@ -1,11 +1,5 @@
-import { Range, SymbolKind } from 'vscode';
-import type {
-  DocumentFilter,
-  DocumentSymbol,
-  Position,
-  SymbolInformation,
-  TextDocument
-} from 'vscode';
+import { Range, SymbolKind } from 'vscode'
+import type { DocumentFilter, DocumentSymbol, Position, SymbolInformation, TextDocument, Uri } from 'vscode'
 
 export interface SymbolData {
   readonly kind: SymbolKind;
@@ -56,25 +50,55 @@ const supportedKinds: ReadonlyMap<string, readonly SymbolKind[]> = new Map([
     SymbolKind.Property,
     SymbolKind.Variable
   ]]
-]);
+])
+
+const supportedFileExtensions = [
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs'
+] as const
 
 export function getDocumentFilter(): DocumentFilter[] {
-  return [...supportedKinds.keys()].map(language => ({ language }));
+  const supportedLanguages = [...supportedKinds.keys()]
+  const documentFilter = supportedLanguages.map(language => ({ language }))
+
+  return documentFilter
+}
+
+export function isSupportedLanguage(languageId: string): boolean {
+  const isSupported = supportedKinds.has(languageId)
+
+  return isSupported
+}
+
+export function isSupportedFile(uri: Uri): boolean {
+  const path = uri.path.toLowerCase()
+
+  const isSupported = supportedFileExtensions.some(extension =>
+    path.endsWith(extension)
+  )
+
+  return isSupported
 }
 
 export function getSymbolData(
   symbols: readonly (DocumentSymbol | SymbolInformation)[],
   document: TextDocument
 ): SymbolData[] {
-  const symbolData: SymbolData[] = [];
+  const symbolData: SymbolData[] = []
 
   for (const symbol of symbols) {
     if (isDocumentSymbol(symbol)) {
-      appendDocumentSymbols(symbolData, symbol, document);
-      continue;
+      appendDocumentSymbols(symbolData, symbol, document)
+      continue
     }
 
-    const normalizedName = normalizeSymbolName(symbol.name);
+    const normalizedName = normalizeSymbolName(symbol.name)
 
     if (isSymbolEligible(
       symbol.kind,
@@ -89,17 +113,17 @@ export function getSymbolData(
         range: symbol.location.range,
         declarationRange: symbol.location.range,
         referencePosition: symbol.location.range.start
-      });
+      })
     }
   }
 
-  return symbolData;
+  return symbolData
 }
 
 function isKindSupported(kind: SymbolKind, languageId: string): boolean {
-  const kinds = supportedKinds.get(languageId);
+  const kinds = supportedKinds.get(languageId)
 
-  return kinds?.includes(kind) ?? false;
+  return kinds?.includes(kind) ?? false
 }
 
 function isSymbolEligible(
@@ -109,22 +133,22 @@ function isSymbolEligible(
   languageId: string
 ): boolean {
   if (!isKindSupported(kind, languageId)) {
-    return false;
+    return false
   }
 
   if (parentKind === undefined && normalizedName === 'default') {
-    return false;
+    return false
   }
 
   return kind !== SymbolKind.Property
     || parentKind === SymbolKind.Class
-    || parentKind === SymbolKind.Interface;
+    || parentKind === SymbolKind.Interface
 }
 
 function isDocumentSymbol(
   symbol: DocumentSymbol | SymbolInformation
 ): symbol is DocumentSymbol {
-  return 'selectionRange' in symbol;
+  return 'selectionRange' in symbol
 }
 
 function appendDocumentSymbols(
@@ -135,17 +159,17 @@ function appendDocumentSymbols(
   const pending: PendingDocumentSymbol[] = [{
     parentKind: undefined,
     symbol: root
-  }];
+  }]
 
   while (pending.length > 0) {
-    const pendingSymbol = pending.pop();
+    const pendingSymbol = pending.pop()
 
     if (pendingSymbol === undefined) {
-      continue;
+      continue
     }
 
-    const { parentKind, symbol } = pendingSymbol;
-    const normalizedName = normalizeSymbolName(symbol.name);
+    const { parentKind, symbol } = pendingSymbol
+    const normalizedName = normalizeSymbolName(symbol.name)
 
     if (isSymbolEligible(
       symbol.kind,
@@ -153,7 +177,7 @@ function appendDocumentSymbols(
       parentKind,
       document.languageId
     )) {
-      const declarationRange = getDeclarationRange(symbol, document);
+      const declarationRange = getDeclarationRange(symbol, document)
 
       if (declarationRange !== undefined) {
         destination.push({
@@ -163,15 +187,18 @@ function appendDocumentSymbols(
           range: symbol.range,
           declarationRange,
           referencePosition: declarationRange.start
-        });
+        })
       }
     }
 
     for (let index = symbol.children.length - 1; index >= 0; index -= 1) {
-      const child = symbol.children[index];
+      const child = symbol.children[index]
 
       if (child !== undefined) {
-        pending.push({ parentKind: symbol.kind, symbol: child });
+        pending.push({
+          parentKind: symbol.kind,
+          symbol: child
+        })
       }
     }
   }
@@ -182,66 +209,66 @@ function getDeclarationRange(
   document: TextDocument
 ): Range | undefined {
   if (!symbol.selectionRange.isEqual(symbol.range)) {
-    return symbol.selectionRange;
+    return symbol.selectionRange
   }
 
-  const name = normalizeSymbolName(symbol.name);
+  const name = normalizeSymbolName(symbol.name)
 
   if (name.length === 0) {
-    return undefined;
+    return undefined
   }
 
-  const declarationText = document.getText(symbol.range);
-  const occurrenceOffsets = findStandaloneOccurrences(declarationText, name);
+  const declarationText = document.getText(symbol.range)
+  const occurrenceOffsets = findStandaloneOccurrences(declarationText, name)
 
   if (occurrenceOffsets.length !== 1) {
-    return undefined;
+    return undefined
   }
 
-  const occurrenceOffset = occurrenceOffsets[0];
+  const occurrenceOffset = occurrenceOffsets[0]
 
   if (occurrenceOffset === undefined) {
-    return undefined;
+    return undefined
   }
 
-  const declarationOffset = document.offsetAt(symbol.range.start);
-  const nameOffset = declarationOffset + occurrenceOffset;
+  const declarationOffset = document.offsetAt(symbol.range.start)
+  const nameOffset = declarationOffset + occurrenceOffset
 
   return new Range(
     document.positionAt(nameOffset),
     document.positionAt(nameOffset + name.length)
-  );
+  )
 }
 
 function normalizeSymbolName(name: string): string {
-  return name.replace(/^\((?:get|set)\)\s+/, '');
+  return name.replace(/^\((?:get|set)\)\s+/, '')
 }
 
 function findStandaloneOccurrences(text: string, name: string): number[] {
-  const offsets: number[] = [];
-  let searchOffset = 0;
+  const offsets: number[] = []
+  let searchOffset = 0
 
   while (searchOffset <= text.length - name.length) {
-    const occurrenceOffset = text.indexOf(name, searchOffset);
+    const occurrenceOffset = text.indexOf(name, searchOffset)
 
     if (occurrenceOffset === -1) {
-      break;
+      break
     }
 
-    const precedingCharacter = text[occurrenceOffset - 1];
-    const followingCharacter = text[occurrenceOffset + name.length];
+    const precedingCharacter = text[occurrenceOffset - 1]
+    const followingCharacter = text[occurrenceOffset + name.length]
 
     if (!isIdentifierCharacter(precedingCharacter)
       && !isIdentifierCharacter(followingCharacter)) {
-      offsets.push(occurrenceOffset);
+      offsets.push(occurrenceOffset)
     }
 
-    searchOffset = occurrenceOffset + name.length;
+    searchOffset = occurrenceOffset + name.length
   }
 
-  return offsets;
+  return offsets
 }
 
 function isIdentifierCharacter(character: string | undefined): boolean {
-  return character !== undefined && /[$_\p{ID_Continue}]/u.test(character);
+  return character !== undefined && /[$_\p{ID_Continue}]/u.test(character)
 }
