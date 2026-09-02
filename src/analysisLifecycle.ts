@@ -1,7 +1,7 @@
 import { Disposable, FileType, workspace } from 'vscode'
 import type { Uri } from 'vscode'
 import type { ZeroReferenceAnalyzer } from './analysis.js'
-import { registerUseCodeLensListener } from './config.js'
+import { registerAnalysisConfigurationListener } from './config.js'
 import { isSupportedFile, isSupportedLanguage } from './symbols.js'
 
 /** Connects workspace and configuration changes to shared analysis state. */
@@ -11,7 +11,8 @@ export function registerAnalysisLifecycle(
   const fileWatcher = workspace.createFileSystemWatcher('**')
 
   const subscriptions = [
-    registerUseCodeLensListener(() => analyzer.invalidateConfiguration()),
+    registerAnalysisConfigurationListener(() => analyzer.invalidateConfiguration()),
+    workspace.onDidChangeWorkspaceFolders(() => analyzer.invalidateConfiguration()),
     workspace.onDidChangeTextDocument(event => {
       const hasContentChanges = event.contentChanges.length > 0
       const hasSupportedLanguage = isSupportedLanguage(event.document.languageId)

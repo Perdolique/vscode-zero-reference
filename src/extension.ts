@@ -1,20 +1,25 @@
-import { commands, languages } from 'vscode'
+import { CodeActionKind, commands, languages, window } from 'vscode'
 import type { ExtensionContext } from 'vscode'
 import { ZeroReferenceAnalyzer } from './analysis.js'
 import { registerAnalysisLifecycle } from './analysisLifecycle.js'
 import { ZeroReferenceCodeLensProvider } from './codeLensProvider.js'
+import { ZeroReferenceCodeActionProvider } from './codeActionProvider.js'
 import { getUseCodeLens, updateUseCodeLens } from './config.js'
 import { getDocumentFilter } from './symbols.js'
 
 export function activate(context: ExtensionContext): void {
-  const analyzer = new ZeroReferenceAnalyzer()
+  const outputChannel = window.createOutputChannel('Zero Reference', { log: true })
+  const reportConfigurationWarning = outputChannel.warn.bind(outputChannel)
+  const analyzer = new ZeroReferenceAnalyzer(undefined, reportConfigurationWarning)
   const codeLensProvider = new ZeroReferenceCodeLensProvider(analyzer)
+  const codeActionProvider = new ZeroReferenceCodeActionProvider(analyzer)
   const documentFilter = getDocumentFilter()
   const refreshAnalysis = createRefreshHandler(analyzer)
 
   context.subscriptions.push(
     codeLensProvider,
     analyzer,
+    outputChannel,
     commands.registerCommand('zeroReference.toggleCodeLens', async () => {
       const useCodeLens = getUseCodeLens()
 
@@ -22,7 +27,10 @@ export function activate(context: ExtensionContext): void {
     }),
     commands.registerCommand('zeroReference.refresh', refreshAnalysis),
     registerAnalysisLifecycle(analyzer),
-    languages.registerCodeLensProvider(documentFilter, codeLensProvider)
+    languages.registerCodeLensProvider(documentFilter, codeLensProvider),
+    languages.registerCodeActionsProvider(documentFilter, codeActionProvider, {
+      providedCodeActionKinds: [CodeActionKind.QuickFix]
+    })
   )
 }
 
