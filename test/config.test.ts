@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { commands, ConfigurationTarget, extensions, workspace } from 'vscode'
-import { registerUseCodeLensListener } from '../src/config.js'
+import { registerAnalysisConfigurationListener } from '../src/config.js'
 
 suite('useCodeLens configuration', () => {
   suiteSetup(async () => {
@@ -44,7 +44,7 @@ suite('useCodeLens configuration', () => {
     const change = createDeferred<void>()
     let refreshCount = 0
 
-    const listener = registerUseCodeLensListener(() => {
+    const listener = registerAnalysisConfigurationListener(() => {
       refreshCount += 1
       change.resolve()
     })

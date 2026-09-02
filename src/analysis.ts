@@ -13,6 +13,8 @@ import type {
 
 import { getSymbolData } from './symbols.js'
 import type { SymbolData } from './symbols.js'
+import { isDocumentExcluded } from './config.js'
+import { getSuppressionLines, hasSuppressionComment } from './suppression.js'
 
 const referenceConcurrency = 4
 
@@ -27,6 +29,7 @@ export interface ZeroReferenceFinding {
   readonly declarationRange: Range;
   readonly name: string;
   readonly range: Range;
+  readonly suppressionLine?: number | undefined;
 }
 
 interface AnalysisIdentity {
@@ -62,8 +65,27 @@ export class ZeroReferenceAnalyzer implements Disposable {
   readonly onDidInvalidate = this.invalidationEventEmitter.event
 
   constructor(
-    private readonly executeCommand: CommandExecutor = defaultCommandExecutor
+    private readonly executeCommand: CommandExecutor = defaultCommandExecutor,
+    private readonly reportConfigurationWarning: (message: string) => void = console.warn
   ) {}
+
+  /** Reads only current completed analysis; editor actions must not trigger reference lookups. */
+  getCachedFindings(
+    document: TextDocument,
+    token: CancellationToken
+  ): readonly ZeroReferenceFinding[] {
+    const identity = this.createIdentity(document)
+    const documentKey = document.uri.toString()
+    const cachedAnalysis = this.cache.get(documentKey)
+
+    if (cachedAnalysis === undefined
+      || !hasSameIdentity(cachedAnalysis, identity)
+      || !this.isAnalysisCurrent(document, identity, token)) {
+      return []
+    }
+
+    return cachedAnalysis.findings
+  }
 
   async analyze(
     document: TextDocument,
@@ -81,6 +103,10 @@ export class ZeroReferenceAnalyzer implements Disposable {
     if (cachedAnalysis !== undefined
       && hasSameIdentity(cachedAnalysis, identity)) {
       return cachedAnalysis.findings
+    }
+
+    if (isDocumentExcluded(document, this.reportConfigurationWarning)) {
+      return []
     }
 
     let hasLoggedError = false
@@ -117,12 +143,26 @@ export class ZeroReferenceAnalyzer implements Disposable {
 
     const symbolData = getSymbolData(symbols, document)
     const declarationIdentitiesByRange = getDeclarationIdentitiesByRange(symbolData)
+    const suppressionLines = getSuppressionLines(symbols, document)
+    const suppressedRanges = new Set<string>()
+
+    for (const symbol of symbolData) {
+      const line = suppressionLines.get(symbol.range.start.line)
+
+      if (line !== undefined && hasSuppressionComment(document, line)) {
+        const rangeKey = getRangeKey(symbol.declarationRange)
+
+        suppressedRanges.add(rangeKey)
+      }
+    }
 
     const candidates = await this.findCandidates(
       document,
       identity,
       symbolData,
       declarationIdentitiesByRange,
+      suppressionLines,
+      suppressedRanges,
       token,
       logErrorOnce
     )
@@ -193,6 +233,8 @@ export class ZeroReferenceAnalyzer implements Disposable {
     identity: AnalysisIdentity,
     symbols: readonly SymbolData[],
     declarationIdentitiesByRange: ReadonlyMap<string, ReadonlySet<string>>,
+    suppressionLines: ReadonlyMap<number, number>,
+    suppressedRanges: ReadonlySet<string>,
     token: CancellationToken,
     logErrorOnce: (error: unknown) => void
   ): Promise<readonly (FindingCandidate | null)[]> {
@@ -223,6 +265,12 @@ export class ZeroReferenceAnalyzer implements Disposable {
 
         if (symbol === undefined || !isCurrent()) {
           return
+        }
+
+        const symbolRangeKey = getRangeKey(symbol.declarationRange)
+
+        if (suppressedRanges.has(symbolRangeKey)) {
+          continue
         }
 
         const releaseReferenceLookup = await this.referenceLookupLimiter.acquire(
@@ -265,6 +313,7 @@ export class ZeroReferenceAnalyzer implements Disposable {
           document.uri,
           locations,
           declarationIdentitiesByRange,
+          suppressedRanges,
           fallbackDeclarationIdentity
         )
 
@@ -272,13 +321,16 @@ export class ZeroReferenceAnalyzer implements Disposable {
           continue
         }
 
+        const suppressionLine = suppressionLines.get(symbol.range.start.line)
+
         candidates[symbolIndex] = {
           declarationGroupKey,
 
           finding: {
             declarationRange: symbol.declarationRange,
             name: symbol.name,
-            range: symbol.range
+            range: symbol.range,
+            suppressionLine
           }
         }
       }
@@ -364,6 +416,7 @@ function getDeclarationGroupKey(
   documentUri: Uri,
   locations: readonly Location[] | undefined,
   declarationIdentitiesByRange: ReadonlyMap<string, ReadonlySet<string>>,
+  suppressedRanges: ReadonlySet<string>,
   declarationIdentityKey: string
 ): string | undefined {
   if (locations === undefined || locations.length === 0) {
@@ -377,6 +430,7 @@ function getDeclarationGroupKey(
     const declarationIdentities = declarationIdentitiesByRange.get(locationKey)
 
     if (location.uri.toString() !== documentUri.toString()
+      || suppressedRanges.has(locationKey)
       || !declarationIdentities?.has(declarationIdentityKey)) {
       return
     }

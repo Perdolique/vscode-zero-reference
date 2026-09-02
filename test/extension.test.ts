@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
-import { commands, extensions, Uri, workspace } from 'vscode'
-import type { CodeLens } from 'vscode'
+import { commands, ConfigurationTarget, extensions, Range, Uri, WorkspaceEdit, workspace } from 'vscode'
+import type { CodeAction, CodeLens } from 'vscode'
 import { ZeroReferenceAnalyzer } from '../src/analysis.js'
 import type { CommandExecutor } from '../src/analysis.js'
 import { createRefreshHandler } from '../src/extension.js'
@@ -79,5 +79,55 @@ suite('extension integration', () => {
       titles.includes('"preservedClassProperty" has zero references'),
       true
     )
+  })
+
+  test('registers the Quick Fix and refreshes actual CodeLens after applying and removing suppression', async () => {
+    const folder = workspace.workspaceFolders?.[0]
+
+    assert.ok(folder !== undefined)
+
+    const uri = Uri.joinPath(folder.uri, 'action.ts')
+    const document = await workspace.openTextDocument(uri)
+    const original = document.getText()
+    const nameRange = new Range(0, 16, 0, 21)
+    const configuration = workspace.getConfiguration('zeroReference')
+    const previousExclusions = configuration.inspect('exclude')?.workspaceValue
+
+    try {
+      const lenses = await commands.executeCommand<CodeLens[]>('vscode.executeCodeLensProvider', uri)
+
+      assert.ok(lenses?.some(lens => lens.command?.title === '"entry" has zero references'))
+
+      const actions = await commands.executeCommand<CodeAction[]>('vscode.executeCodeActionProvider', uri, nameRange)
+      const ignore = actions?.find(action => action.title === 'Zero Reference: Ignore this symbol')
+
+      assert.ok(ignore?.edit !== undefined)
+      assert.equal(await workspace.applyEdit(ignore.edit), true)
+
+      const suppressedLenses = await commands.executeCommand<CodeLens[]>('vscode.executeCodeLensProvider', uri)
+
+      assert.equal(suppressedLenses?.some(lens => lens.command?.title === '"entry" has zero references'), false)
+
+      const restore = new WorkspaceEdit()
+
+      restore.replace(uri, new Range(0, 0, document.lineCount, 0), original)
+      assert.equal(await workspace.applyEdit(restore), true)
+
+      const restoredLenses = await commands.executeCommand<CodeLens[]>('vscode.executeCodeLensProvider', uri)
+
+      assert.ok(restoredLenses?.some(lens => lens.command?.title === '"entry" has zero references'))
+      await configuration.update('exclude', ['action.ts'], ConfigurationTarget.Workspace)
+
+      const excludedActions = await commands.executeCommand<CodeAction[]>('vscode.executeCodeActionProvider', uri, nameRange)
+
+      assert.equal(excludedActions?.some(action => action.title === 'Zero Reference: Ignore this symbol'), false)
+    } finally {
+      await configuration.update('exclude', previousExclusions, ConfigurationTarget.Workspace)
+
+      const restore = new WorkspaceEdit()
+
+      restore.replace(uri, new Range(0, 0, document.lineCount, 0), original)
+      await workspace.applyEdit(restore)
+    }
   })
 })

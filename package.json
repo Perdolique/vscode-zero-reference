@@ -48,6 +48,16 @@
     "configuration": {
       "title": "Zero Reference configuration",
       "properties": {
+        "zeroReference.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "Skip declarations in files matching these glob patterns relative to their workspace folder. References from excluded files still count."
+        },
         "zeroReference.useCodeLens": {
           "type": "boolean",
           "default": true,
