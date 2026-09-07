@@ -21,6 +21,23 @@ Properties are analyzed only when Visual Studio Code reports them as direct clas
 
 Zero references describes the current workspace reference graph, not proof that code is unused everywhere. External consumers and dynamic calls may not be visible to the language provider.
 
+Workspace Scan
+--------------
+
+Run **Zero Reference: Scan Workspace** from the Command Palette to check TypeScript and JavaScript files in every workspace folder, including files that are not open in an editor. The scan supports `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`. It runs only when requested and works even with CodeLens disabled.
+
+The progress notification shows the current file and supports cancellation. Documents are loaded without opening editor tabs or saving changes; files already open are analyzed using their current unsaved text. Untitled documents and files outside the workspace are not included.
+
+The scan respects `files.exclude`, `zeroReference.exclude`, and suppression comments, and always skips `.git` and `node_modules` directories. It follows VS Code's file-search API: `search.exclude` and `.gitignore` are not applied automatically. Use the existing exclusion settings for generated files. References from excluded files still count.
+
+Results appear together in **Problems**, with the source **Zero Reference**. Each information-level entry navigates to the declaration name and uses the theme's unnecessary-code presentation. Enable the Problems panel's information filter if these entries are hidden. The summary reports checked, skipped, and incompletely checked files and findings; files omitted by the initial file search are not counted as skipped. Provider failures and unresolved references make the scan incomplete rather than claiming that the project is clean. **Show Output** opens the detailed log, including original provider errors.
+
+Results are a snapshot of the last scan, kept in memory for this window even when documents close. After code changes, entries for changed, deleted, or renamed files are removed. Other entries say **Results from a previous scan; run Scan Workspace to update** and stop fading code until another scan finishes. Changing exclusions or workspace folders clears the snapshot. Toggling CodeLens does not affect it.
+
+A new scan replaces the previous snapshot only after its file traversal finishes, including when there are no findings. Cancellation or file-discovery failure keeps the previous snapshot. Editing the reference graph during a scan cancels it to avoid combining different project states. Already-issued provider requests may finish after cancellation, but their results cannot overwrite the snapshot.
+
+Run **Zero Reference: Clear Workspace Scan Results** to cancel any active scan and remove its findings. Re-running **Scan Workspace** cancels the previous run. **Zero Reference: Refresh** invalidates analysis and marks scan results as outdated; it does not automatically scan the workspace. Quick Fix continues to use only current cached analysis, never an outdated scan entry. No scan runs in the background automatically, and no code is deleted.
+
 Exclusions and Suppression
 --------------------------
 
@@ -32,7 +49,7 @@ Use `zeroReference.exclude` to skip declarations in selected files:
 }
 ```
 
-Patterns use VS Code glob syntax and are relative to the file's workspace folder, including in multi-root workspaces. User, workspace, and folder settings follow VS Code's normal precedence. The default is an empty array; `files.exclude` is not applied automatically. Files outside a workspace folder are not excluded. References **from** excluded files still count when analyzing other files.
+Patterns use VS Code glob syntax and are relative to the file's workspace folder, including in multi-root workspaces. User, workspace, and folder settings follow VS Code's normal precedence. The default is an empty array; editor CodeLens does not apply `files.exclude`, while workspace scans use it during file discovery. Files outside a workspace folder are not excluded from editor analysis. References **from** excluded files still count when analyzing other files.
 
 To suppress one declaration, place this comment immediately before its declaration line:
 

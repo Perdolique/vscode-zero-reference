@@ -34,6 +34,12 @@ const shared = {
 export default defineConfig([
   {
     ...shared,
+    label: 'scan-integration',
+    files: 'build-test/test/scanIntegration/*.test.js',
+    workspaceFolder: singleRoot
+  },
+  {
+    ...shared,
     label: 'single-root',
     files: 'build-test/test/*.test.js',
     workspaceFolder: singleRoot

@@ -18,7 +18,7 @@ export function registerAnalysisLifecycle(
       const hasSupportedLanguage = isSupportedLanguage(event.document.languageId)
 
       if (hasContentChanges && hasSupportedLanguage) {
-        analyzer.invalidateGraph()
+        analyzer.invalidateGraph([event.document.uri])
       }
     }),
     workspace.onDidCloseTextDocument(document => {
@@ -30,11 +30,11 @@ export function registerAnalysisLifecycle(
     }),
     fileWatcher.onDidChange(uri => {
       if (isSupportedFile(uri)) {
-        analyzer.invalidateGraph()
+        analyzer.invalidateGraph([uri])
       }
     }),
-    fileWatcher.onDidDelete(() => {
-      analyzer.invalidateGraph()
+    fileWatcher.onDidDelete(uri => {
+      analyzer.invalidateGraph([uri])
     })
   ]
 
@@ -48,7 +48,7 @@ async function invalidateCreatedResource(
   analyzer: ZeroReferenceAnalyzer
 ): Promise<void> {
   if (isSupportedFile(uri)) {
-    analyzer.invalidateGraph()
+    analyzer.invalidateGraph([uri])
 
     return
   }
@@ -58,7 +58,7 @@ async function invalidateCreatedResource(
     const isDirectory = (resourceStat.type & FileType.Directory) !== 0
 
     if (isDirectory) {
-      analyzer.invalidateGraph()
+      analyzer.invalidateGraph([uri])
     }
   } catch {
     // The resource can disappear again before the asynchronous stat completes.

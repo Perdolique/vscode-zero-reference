@@ -1,4 +1,4 @@
-import { commands, EventEmitter } from 'vscode'
+import { CancellationTokenSource, commands, EventEmitter } from 'vscode'
 
 import type {
   CancellationToken,
@@ -38,8 +38,25 @@ interface AnalysisIdentity {
   readonly graphEpoch: number;
 }
 
-interface AnalysisCacheEntry extends AnalysisIdentity {
+export interface AnalysisResult {
   readonly findings: readonly ZeroReferenceFinding[];
+  readonly status: 'complete' | 'incomplete' | 'cancelled';
+}
+
+export interface AnalysisInvalidation {
+  readonly reason: 'graph' | 'configuration';
+  readonly resources: readonly Uri[];
+}
+
+interface AnalysisCacheEntry extends AnalysisIdentity {
+  readonly result: AnalysisResult;
+}
+
+interface PendingAnalysis extends AnalysisIdentity {
+  readonly cancellation: CancellationTokenSource;
+  consumers: number;
+  readonly result: Promise<AnalysisResult>;
+  settled: boolean;
 }
 
 interface FindingCandidate {
@@ -56,7 +73,8 @@ interface PendingAcquisition {
 /** Owns shared zero-reference analysis, caching, and invalidation state. */
 export class ZeroReferenceAnalyzer implements Disposable {
   private readonly cache = new Map<string, AnalysisCacheEntry>()
-  private readonly invalidationEventEmitter = new EventEmitter<void>()
+  private readonly pending = new Map<string, PendingAnalysis>()
+  private readonly invalidationEventEmitter = new EventEmitter<AnalysisInvalidation>()
   private readonly referenceLookupLimiter = new ConcurrencyLimiter(referenceConcurrency)
   private configurationEpoch = 0
   private graphEpoch = 0
@@ -66,7 +84,8 @@ export class ZeroReferenceAnalyzer implements Disposable {
 
   constructor(
     private readonly executeCommand: CommandExecutor = defaultCommandExecutor,
-    private readonly reportConfigurationWarning: (message: string) => void = console.warn
+    private readonly reportConfigurationWarning: (message: string) => void = console.warn,
+    private readonly reportProviderError: (error: unknown, uri: Uri) => void = error => { console.error(error) }
   ) {}
 
   /** Reads only current completed analysis; editor actions must not trigger reference lookups. */
@@ -84,17 +103,27 @@ export class ZeroReferenceAnalyzer implements Disposable {
       return []
     }
 
-    return cachedAnalysis.findings
+    return cachedAnalysis.result.findings
   }
 
   async analyze(
     document: TextDocument,
     token: CancellationToken
   ): Promise<readonly ZeroReferenceFinding[]> {
+    const result = await this.analyzeDetailed(document, token)
+
+    return result.findings
+  }
+
+  /** Shares work between consumers while retaining scan completeness and independent cancellation. */
+  analyzeDetailed(
+    document: TextDocument,
+    token: CancellationToken
+  ): Promise<AnalysisResult> {
     const identity = this.createIdentity(document)
 
     if (!this.isAnalysisCurrent(document, identity, token)) {
-      return []
+      return Promise.resolve(cancelledResult())
     }
 
     const documentKey = document.uri.toString()
@@ -102,25 +131,142 @@ export class ZeroReferenceAnalyzer implements Disposable {
 
     if (cachedAnalysis !== undefined
       && hasSameIdentity(cachedAnalysis, identity)) {
-      return cachedAnalysis.findings
+      return Promise.resolve(cachedAnalysis.result)
     }
 
     if (isDocumentExcluded(document, this.reportConfigurationWarning)) {
-      return []
+      return Promise.resolve({
+        findings: [],
+        status: 'complete'
+      })
+    }
+
+    let pending = this.pending.get(documentKey)
+
+    if (pending !== undefined && (!hasSameIdentity(pending, identity)
+      || pending.cancellation.token.isCancellationRequested)) {
+      pending.cancellation.cancel()
+      pending = undefined
+    }
+
+    if (pending === undefined) {
+      const cancellation = new CancellationTokenSource()
+
+      const result = Promise.resolve().then(async () => {
+        try {
+          return await this.runAnalysis(document, identity, cancellation.token)
+        } catch (error: unknown) {
+          this.reportProviderError(error, document.uri)
+
+          return {
+            findings: [],
+            status: 'incomplete'
+          } as const
+        }
+      }).finally(() => {
+        entry.settled = true
+
+        if (this.pending.get(documentKey) === entry) {
+          this.pending.delete(documentKey)
+        }
+
+        cancellation.dispose()
+      })
+
+      const entry: PendingAnalysis = {
+        cancellation,
+        configurationEpoch: identity.configurationEpoch,
+        consumers: 0,
+        documentVersion: identity.documentVersion,
+        graphEpoch: identity.graphEpoch,
+        result,
+        settled: false
+      }
+
+      pending = entry
+      this.pending.set(documentKey, entry)
+    }
+
+    return this.joinAnalysis(pending, document, token)
+  }
+
+  private joinAnalysis(
+    pending: PendingAnalysis,
+    document: TextDocument,
+    token: CancellationToken
+  ): Promise<AnalysisResult> {
+    pending.consumers += 1
+
+    return new Promise(resolve => {
+      let settled = false
+      let consumerCancellation: Disposable | undefined
+      let sharedCancellation: Disposable | undefined
+
+      const finish = (result: AnalysisResult): void => {
+        if (settled) {
+          return
+        }
+
+        settled = true
+        consumerCancellation?.dispose()
+        sharedCancellation?.dispose()
+        pending.consumers -= 1
+
+        if (pending.consumers === 0 && !pending.settled) {
+          pending.cancellation.cancel()
+        }
+
+        resolve(result)
+      }
+
+      const cancel = (): void => {
+        const result = cancelledResult()
+
+        finish(result)
+      }
+
+      consumerCancellation = token.onCancellationRequested(cancel)
+      sharedCancellation = pending.cancellation.token.onCancellationRequested(cancel)
+
+      void pending.result.then(result => {
+        if (!this.isAnalysisCurrent(document, pending, token)) {
+          cancel()
+
+          return
+        }
+
+        finish(result)
+      })
+
+      if (token.isCancellationRequested || pending.cancellation.token.isCancellationRequested) {
+        cancel()
+      }
+    })
+  }
+
+  private async runAnalysis(
+    document: TextDocument,
+    identity: AnalysisIdentity,
+    token: CancellationToken
+  ): Promise<AnalysisResult> {
+    if (!this.isAnalysisCurrent(document, identity, token)) {
+      return cancelledResult()
     }
 
     let hasLoggedError = false
     let hasProviderError = false
+    let isIncomplete = false
 
     const logErrorOnce = (error: unknown): void => {
       hasProviderError = true
+      isIncomplete = true
 
       if (hasLoggedError) {
         return
       }
 
       hasLoggedError = true
-      console.error(error)
+      this.reportProviderError(error, document.uri)
     }
 
     let symbols: DocumentSymbol[] | SymbolInformation[] | undefined
@@ -133,12 +279,21 @@ export class ZeroReferenceAnalyzer implements Disposable {
     } catch (error: unknown) {
       logErrorOnce(error)
 
-      return []
+      return {
+        findings: [],
+        status: 'incomplete'
+      }
     }
 
-    if (symbols === undefined
-      || !this.isAnalysisCurrent(document, identity, token)) {
-      return []
+    if (!this.isAnalysisCurrent(document, identity, token)) {
+      return cancelledResult()
+    }
+
+    if (symbols === undefined) {
+      return {
+        findings: [],
+        status: 'incomplete'
+      }
     }
 
     const symbolData = getSymbolData(symbols, document)
@@ -164,34 +319,46 @@ export class ZeroReferenceAnalyzer implements Disposable {
       suppressionLines,
       suppressedRanges,
       token,
-      logErrorOnce
+      logErrorOnce,
+      () => { isIncomplete = true }
     )
 
     if (!this.isAnalysisCurrent(document, identity, token)) {
-      return []
+      return cancelledResult()
     }
 
     const findings = getUniqueFindings(candidates)
 
+    const result: AnalysisResult = {
+      findings,
+      status: isIncomplete ? 'incomplete' : 'complete'
+    }
+
     if (!hasProviderError) {
+      const documentKey = document.uri.toString()
+
       this.cache.set(documentKey, {
         configurationEpoch: identity.configurationEpoch,
         documentVersion: identity.documentVersion,
-        findings,
-        graphEpoch: identity.graphEpoch
+        graphEpoch: identity.graphEpoch,
+        result
       })
     }
 
-    return findings
+    return result
   }
 
-  invalidateGraph(): void {
+  invalidateGraph(resources: readonly Uri[] = []): void {
     if (this.isDisposed) {
       return
     }
 
     this.graphEpoch += 1
-    this.invalidateAll()
+
+    this.invalidateAll({
+      reason: 'graph',
+      resources
+    })
   }
 
   invalidateConfiguration(): void {
@@ -200,18 +367,25 @@ export class ZeroReferenceAnalyzer implements Disposable {
     }
 
     this.configurationEpoch += 1
-    this.invalidateAll()
+
+    this.invalidateAll({
+      reason: 'configuration',
+      resources: []
+    })
   }
 
   forgetDocument(uri: Uri): void {
     const documentKey = uri.toString()
 
     this.cache.delete(documentKey)
+    this.pending.get(documentKey)?.cancellation.cancel()
+    this.pending.delete(documentKey)
   }
 
   dispose(): void {
     this.isDisposed = true
     this.cache.clear()
+    this.cancelPending()
     this.invalidationEventEmitter.dispose()
   }
 
@@ -223,9 +397,18 @@ export class ZeroReferenceAnalyzer implements Disposable {
     }
   }
 
-  private invalidateAll(): void {
+  private invalidateAll(event: AnalysisInvalidation): void {
     this.cache.clear()
-    this.invalidationEventEmitter.fire()
+    this.cancelPending()
+    this.invalidationEventEmitter.fire(event)
+  }
+
+  private cancelPending(): void {
+    for (const entry of this.pending.values()) {
+      entry.cancellation.cancel()
+    }
+
+    this.pending.clear()
   }
 
   private async findCandidates(
@@ -236,7 +419,8 @@ export class ZeroReferenceAnalyzer implements Disposable {
     suppressionLines: ReadonlyMap<number, number>,
     suppressedRanges: ReadonlySet<string>,
     token: CancellationToken,
-    logErrorOnce: (error: unknown) => void
+    logErrorOnce: (error: unknown) => void,
+    reportIncomplete: () => void
   ): Promise<readonly (FindingCandidate | null)[]> {
     const candidates: (FindingCandidate | null)[] = Array.from(
       { length: symbols.length },
@@ -307,6 +491,11 @@ export class ZeroReferenceAnalyzer implements Disposable {
           return
         }
 
+        if (locations === undefined || locations.length === 0) {
+          reportIncomplete()
+          continue
+        }
+
         const fallbackDeclarationIdentity = getDeclarationIdentityKey(symbol)
 
         const declarationGroupKey = getDeclarationGroupKey(
@@ -361,7 +550,7 @@ export class ZeroReferenceAnalyzer implements Disposable {
 }
 
 function hasSameIdentity(
-  cacheEntry: AnalysisCacheEntry,
+  cacheEntry: AnalysisIdentity,
   identity: AnalysisIdentity
 ): boolean {
   const hasMatchingIdentity = cacheEntry.documentVersion === identity.documentVersion
@@ -369,6 +558,13 @@ function hasSameIdentity(
     && cacheEntry.configurationEpoch === identity.configurationEpoch
 
   return hasMatchingIdentity
+}
+
+function cancelledResult(): AnalysisResult {
+  return {
+    findings: [],
+    status: 'cancelled'
+  }
 }
 
 function getUniqueFindings(

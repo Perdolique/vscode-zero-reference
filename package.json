@@ -75,6 +75,16 @@
         "command": "zeroReference.refresh",
         "title": "Refresh",
         "category": "Zero Reference"
+      },
+      {
+        "command": "zeroReference.scanWorkspace",
+        "title": "Scan Workspace",
+        "category": "Zero Reference"
+      },
+      {
+        "command": "zeroReference.clearWorkspaceScanResults",
+        "title": "Clear Workspace Scan Results",
+        "category": "Zero Reference"
       }
     ]
   },
