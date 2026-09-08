@@ -14,8 +14,130 @@ import {
 
 import { ZeroReferenceAnalyzer } from '../src/analysis.js'
 import type { CommandExecutor } from '../src/analysis.js'
+import { ZeroReferenceCodeLensProvider } from '../src/codeLensProvider.js'
 
 suite('ZeroReferenceAnalyzer', () => {
+  for (const cancelledConsumer of ['scan', 'lens']) {
+    test(`shares pending CodeLens and scan work when the ${cancelledConsumer} consumer cancels`, async () => {
+      const fixture = await createSymbolFixture(1)
+      const gate = createDeferred<void>()
+      const started = createDeferred<void>()
+
+      const harness = createAnalyzerHarness(fixture, async position => {
+        started.resolve()
+        await gate.promise
+
+        const range = fixture.declarationRanges[position.line]
+
+        assert.ok(range !== undefined)
+
+        return [new Location(fixture.document.uri, range)]
+      })
+
+      const scanner = new CancellationTokenSource()
+      const lenses = new CancellationTokenSource()
+      const provider = new ZeroReferenceCodeLensProvider(harness.analyzer, () => true)
+
+      try {
+        const scan = harness.analyzer.analyzeDetailed(fixture.document, scanner.token)
+        const lens = provider.provideCodeLenses(fixture.document, lenses.token)
+
+        await started.promise
+        assert.equal(harness.counts.documentSymbolCalls, 1)
+        assert.equal(harness.counts.referenceCalls, 1)
+
+        if (cancelledConsumer === 'scan') {
+          scanner.cancel()
+          assert.equal((await scan).status, 'cancelled')
+        } else {
+          lenses.cancel()
+          assert.deepEqual(await lens, [])
+        }
+
+        gate.resolve()
+
+        if (cancelledConsumer === 'scan') {
+          assert.equal((await lens).length, 1)
+        } else {
+          assert.equal((await scan).status, 'complete')
+        }
+
+        const fresh = new CancellationTokenSource()
+        const cached = await harness.analyzer.analyzeDetailed(fixture.document, fresh.token)
+
+        assert.equal(cached.findings.length, 1)
+        assert.equal(harness.counts.referenceCalls, 1)
+        fresh.dispose()
+      } finally {
+        gate.resolve()
+        provider.dispose()
+        scanner.dispose()
+        lenses.dispose()
+        harness.analyzer.dispose()
+      }
+    })
+  }
+
+  test('retains occupied lookup slots until cancelled requests actually finish', async () => {
+    const fixture = await createSymbolFixture(8)
+    const gate = createDeferred<void>()
+
+    const harness = createAnalyzerHarness(fixture, async position => {
+      await gate.promise
+
+      const range = fixture.declarationRanges[position.line]
+
+      assert.ok(range !== undefined)
+
+      return [new Location(fixture.document.uri, range)]
+    })
+
+    const first = new CancellationTokenSource()
+    const second = new CancellationTokenSource()
+
+    try {
+      const cancelled = harness.analyzer.analyzeDetailed(fixture.document, first.token)
+
+      await waitUntil(() => harness.counts.referenceCalls === 4)
+      first.cancel()
+      assert.equal((await cancelled).status, 'cancelled')
+
+      const retry = harness.analyzer.analyzeDetailed(fixture.document, second.token)
+
+      await waitUntil(() => harness.counts.documentSymbolCalls === 2)
+      await delay(25)
+      assert.equal(harness.counts.referenceCalls, 4)
+      gate.resolve()
+      assert.equal((await retry).findings.length, 8)
+      assert.equal(harness.counts.referenceCalls, 12)
+    } finally {
+      gate.resolve()
+      harness.analyzer.dispose()
+      first.dispose()
+      second.dispose()
+    }
+  })
+
+  test('distinguishes unconfirmed references from a complete finding-free result', async () => {
+    const fixture = await createSymbolFixture(1)
+    const cancellation = new CancellationTokenSource()
+
+    for (const references of [undefined, [], [new Location(Uri.parse('file:///consumer.ts'), new Range(0, 0, 0, 2))]]) {
+      const harness = createAnalyzerHarness(fixture, () => references)
+
+      try {
+        const result = await harness.analyzer.analyzeDetailed(fixture.document, cancellation.token)
+
+        assert.deepEqual(result.findings, [])
+        assert.equal(result.status, references?.length ? 'complete' : 'incomplete')
+      } finally {
+        harness.analyzer.dispose()
+      }
+    }
+
+    cancellation.dispose()
+  })
+
   test('reuses a completed analysis with the same identity', async () => {
     const fixture = await createSymbolFixture(2)
 

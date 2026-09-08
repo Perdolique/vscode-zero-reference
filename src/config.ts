@@ -2,7 +2,6 @@ import { ConfigurationTarget, languages, RelativePattern, workspace } from 'vsco
 import type { Disposable, TextDocument } from 'vscode'
 
 const useCodeLensKey = 'useCodeLens'
-const useCodeLensConfigurationKey = `zeroReference.${useCodeLensKey}`
 const excludeConfigurationKey = 'zeroReference.exclude'
 
 export function isDocumentExcluded(
@@ -71,8 +70,8 @@ export async function updateUseCodeLens(value: boolean): Promise<void> {
 
 export function registerAnalysisConfigurationListener(onChange: () => void): Disposable {
   return workspace.onDidChangeConfiguration(event => {
-    if (event.affectsConfiguration(useCodeLensConfigurationKey)
-      || event.affectsConfiguration(excludeConfigurationKey)) {
+    if (event.affectsConfiguration(excludeConfigurationKey)
+      || event.affectsConfiguration('files.exclude')) {
       onChange()
     }
   })

@@ -1,10 +1,11 @@
-import { CodeLens, EventEmitter } from 'vscode'
+import { CodeLens, EventEmitter, workspace } from 'vscode'
 import type { CancellationToken, CodeLensProvider, Disposable, TextDocument } from 'vscode'
 import type { ZeroReferenceAnalyzer } from './analysis.js'
 import { getUseCodeLens } from './config.js'
 
 export class ZeroReferenceCodeLensProvider implements CodeLensProvider, Disposable {
   private readonly analysisInvalidationSubscription: Disposable
+  private readonly configurationSubscription: Disposable
   private readonly updateEventEmitter = new EventEmitter<void>()
   private isDisposed = false
 
@@ -16,6 +17,11 @@ export class ZeroReferenceCodeLensProvider implements CodeLensProvider, Disposab
   ) {
     this.analysisInvalidationSubscription = this.analyzer.onDidInvalidate(() => {
       this.updateEventEmitter.fire()
+    })
+    this.configurationSubscription = workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('zeroReference.useCodeLens')) {
+        this.updateEventEmitter.fire()
+      }
     })
   }
 
@@ -50,6 +56,7 @@ export class ZeroReferenceCodeLensProvider implements CodeLensProvider, Disposab
   dispose(): void {
     this.isDisposed = true
     this.analysisInvalidationSubscription.dispose()
+    this.configurationSubscription.dispose()
     this.updateEventEmitter.dispose()
   }
 

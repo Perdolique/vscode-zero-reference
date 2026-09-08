@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert'
 import { commands, ConfigurationTarget, extensions, workspace } from 'vscode'
 import { registerAnalysisConfigurationListener } from '../src/config.js'
+import { ZeroReferenceAnalyzer } from '../src/analysis.js'
+import { ZeroReferenceCodeLensProvider } from '../src/codeLensProvider.js'
 
 suite('useCodeLens configuration', () => {
   suiteSetup(async () => {
@@ -43,8 +45,15 @@ suite('useCodeLens configuration', () => {
     const configuration = workspace.getConfiguration('zeroReference')
     const change = createDeferred<void>()
     let refreshCount = 0
+    let invalidationCount = 0
+    const analyzer = new ZeroReferenceAnalyzer()
+    const provider = new ZeroReferenceCodeLensProvider(analyzer)
 
-    const listener = registerAnalysisConfigurationListener(() => {
+    const configurationListener = registerAnalysisConfigurationListener(() => {
+      invalidationCount += 1
+    })
+
+    const listener = provider.onDidChangeCodeLenses(() => {
       refreshCount += 1
       change.resolve()
     })
@@ -55,8 +64,12 @@ suite('useCodeLens configuration', () => {
       await delay(25)
 
       assert.equal(refreshCount, 1)
+      assert.equal(invalidationCount, 0)
     } finally {
       listener.dispose()
+      configurationListener.dispose()
+      provider.dispose()
+      analyzer.dispose()
     }
   })
 })
