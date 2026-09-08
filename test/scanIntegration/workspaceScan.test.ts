@@ -6,6 +6,7 @@ import {
   DiagnosticSeverity,
   languages,
   Range,
+  TabInputText,
   Uri,
   window,
   WorkspaceEdit,
@@ -32,11 +33,13 @@ suite('fresh workspace scan integration', () => {
     const previousExclusions = configuration.inspect('exclude')?.workspaceValue
     const document = await workspace.openTextDocument(typescriptUri)
     const original = document.getText()
-    const tabs = window.tabGroups.all.flatMap(group => group.tabs).length
 
     try {
+      // Welcome can appear during startup without opening a document editor.
+      await commands.executeCommand('workbench.action.openWalkthrough')
       await configuration.update('useCodeLens', false, ConfigurationTarget.Workspace)
       await configuration.update('exclude', ['scan/consumer.ts'], ConfigurationTarget.Workspace)
+      await window.showTextDocument(document, { preview: false })
 
       const edit = new WorkspaceEdit()
       const end = document.positionAt(original.length)
@@ -44,11 +47,15 @@ suite('fresh workspace scan integration', () => {
       edit.insert(typescriptUri, end, '\nscanUnusedTs();\n')
       assert.equal(await workspace.applyEdit(edit), true)
 
+      const textTabUris = getOpenTextTabUris()
       const result = await commands.executeCommand<WorkspaceScanResult>('zeroReference.scanWorkspace')
 
       assert.ok(result !== undefined)
       assert.ok(result.status === 'complete' || result.status === 'incomplete')
-      assert.equal(window.tabGroups.all.flatMap(group => group.tabs).length, tabs)
+
+      const currentTextTabUris = getOpenTextTabUris()
+
+      assert.deepEqual(currentTextTabUris, textTabUris, 'Scanning must not open document editor tabs')
       assert.equal(document.isDirty, true)
 
       const file = await workspace.fs.readFile(typescriptUri)
@@ -87,3 +94,19 @@ suite('fresh workspace scan integration', () => {
   })
 
 })
+
+function getOpenTextTabUris(): string[] {
+  const uris: string[] = []
+
+  for (const group of window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      if (tab.input instanceof TabInputText) {
+        const uri = tab.input.uri.toString()
+
+        uris.push(uri)
+      }
+    }
+  }
+
+  return uris.sort()
+}
